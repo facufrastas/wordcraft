@@ -174,6 +174,11 @@ pub(crate) fn dispatch(s: &mut Session, id: &str, mutates: bool, run: fn(&mut Se
     {
         return r;
     }
+    // Paste, Merge Formatting and Keep Text Only take whole cells themselves: one cell's worth
+    // goes in each of them, as in Word (see `paste::fill_cells`).
+    if matches!(id, "edit.paste" | "edit.pasteMerge" | "edit.pasteText") && s.cell_range().is_some() {
+        return run(s, v);
+    }
     let Some(segs) = s.column_segments().map(<[(Pos, Pos)]>::to_vec) else { return run(s, v) };
     let cells = s.cell_range().is_some();
     match id {

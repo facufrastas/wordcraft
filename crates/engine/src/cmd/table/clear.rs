@@ -54,6 +54,13 @@ pub(in crate::cmd) fn clear_range_cells(s: &mut Session, range: &crate::CellRang
     Ok(())
 }
 
+/// The text of each cell `range` selects (see [`text_spans`]), in document order.
+pub(crate) fn range_cell_spans(s: &Session, range: &crate::CellRange) -> Vec<(Pos, Pos)> {
+    let Some(t) = s.doc.table(range.story, &range.table) else { return Vec::new() };
+    let prefixes: Vec<Vec<u32>> = range.cells(t).into_iter().map(|(r, c)| cell_prefix(&range.table, r, c)).collect();
+    text_spans(s, range.story, &prefixes)
+}
+
 /// Delete with whole cells selected (#2802): each cell is emptied to one empty paragraph, as in
 /// Word, nested tables included. That paragraph keeps the formatting of the cell's last one (its
 /// mark is the end-of-cell mark). `None` without whole cells, and with Track Changes on (the text

@@ -21,7 +21,7 @@ pub use cells::selected_cells;
 use cells::{cell, with_cells, with_table};
 pub(crate) use cells::{cell_text, row_ends};
 pub(super) use clear::clear_range_cells;
-pub(crate) use clear::{backspace_cells, clear_cells};
+pub(crate) use clear::{backspace_cells, clear_cells, range_cell_spans};
 use clear::{cell_prefix, guard_delete, text_spans};
 use convert::{formula, from_text, quick_table, sort_table, to_text};
 pub use convert::{text_table_cells, text_table_lines};

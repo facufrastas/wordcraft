@@ -2237,6 +2237,48 @@ fn cut_rows_and_cells_clears_their_text() {
     }
 }
 
+/// Pasting one cell's worth (text from a cell, or a whole copied cell) over several selected
+/// cells puts it in each of them, as Word does: part of a column, cells of a row, or a block.
+/// One Undo takes it all back. A copy of several cells still pastes once.
+#[test]
+fn paste_over_selected_cells_fills_each_cell() {
+    let full = row_cells(&["A1", "B1", "C1", "A2", "B2", "C2", "A3", "B3", "C3"]);
+    for whole_cell in [false, true] {
+        for (rows, cols, want) in [
+            ((1, 2), (1, 1), row_cells(&["A1", "B1", "C1", "A2", "A1", "C2", "A3", "A1", "C3"])),
+            ((1, 1), (1, 2), row_cells(&["A1", "B1", "C1", "A2", "A1", "A1", "A3", "B3", "C3"])),
+            ((1, 2), (1, 2), row_cells(&["A1", "B1", "C1", "A2", "A1", "A1", "A3", "A1", "A1"])),
+        ] {
+            let mut s = table3_doc();
+            if whole_cell {
+                select_table_cells(&mut s, (0, 0), (0, 0));
+            } else {
+                run(&mut s, "select.text", json!({"text": "A1"}));
+            }
+            run(&mut s, "edit.copy", json!({}));
+            select_table_cells(&mut s, rows, cols);
+            run(&mut s, "edit.paste", json!({}));
+            assert_eq!(body_table_cells(&s), vec![want.clone()], "{whole_cell} {rows:?} {cols:?}");
+            run(&mut s, "edit.undo", json!({}));
+            assert_eq!(body_table_cells(&s), vec![full.clone()], "{whole_cell} {rows:?} {cols:?}: one undo step");
+            for id in ["edit.pasteText", "edit.pasteMerge"] {
+                select_table_cells(&mut s, rows, cols);
+                run(&mut s, id, json!({}));
+                assert_eq!(body_table_cells(&s), vec![want.clone()], "{id} {whole_cell} {rows:?} {cols:?}");
+                run(&mut s, "edit.undo", json!({}));
+            }
+        }
+    }
+    // Several copied cells paste once, into the first selected cell, as before.
+    let mut s = table3_doc();
+    select_table_cells(&mut s, (0, 0), (0, 1));
+    run(&mut s, "edit.copy", json!({}));
+    select_table_cells(&mut s, (1, 2), (1, 1));
+    run(&mut s, "edit.paste", json!({}));
+    let cells = body_table_cells(&s);
+    assert_eq!(cells.first().and_then(|t| t.get(7)).map(String::as_str), Some(""), "B3 is emptied, not filled");
+}
+
 /// #1744 review: Cut clears every cell Copy takes: a cell merged across the selected columns
 /// widens them, so the cell below the merge's second column is copied and cleared too.
 #[test]

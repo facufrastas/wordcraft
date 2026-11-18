@@ -352,6 +352,57 @@ pub fn merge_formatting(s: &Session, frag: &mut Fragment) {
     }
 }
 
+/// What goes in each of several selected cells: content with no table in it, or what a copy of
+/// one cell holds. `None` for a copy of several cells.
+fn cell_fill(frag: &Fragment) -> Option<Fragment> {
+    if let [Block::Table(t)] = frag.blocks.as_slice() {
+        let [row] = t.rows.as_slice() else { return None };
+        let [cell] = row.cells.as_slice() else { return None };
+        let blocks = cell.blocks.iter().map(|b| (**b).clone()).collect();
+        return Some(Fragment { blocks, parts: frag.parts.clone(), media: frag.media.clone() });
+    }
+    if frag.blocks.iter().any(|b| matches!(b, Block::Table(_))) {
+        return None;
+    }
+    Some(frag.clone())
+}
+
+/// Paste with several whole cells selected: one cell's worth of content (text, or a copied cell)
+/// goes in each of them, replacing their text, as in Word. Returns `false` when the paste goes
+/// in as usual; cells that aren't one run of the text (part of a column) are then emptied first
+/// and the caret left in the first, so the paste goes there and nothing between them is lost.
+pub fn fill_cells(s: &mut Session, content: &Pasted) -> Result<bool, CmdError> {
+    let Some(range) = s.cell_range().cloned() else { return Ok(false) };
+    let spans = super::table::range_cell_spans(s, &range);
+    let fill = match content {
+        // Text with tabs is rows of cells from a spreadsheet or table, not one cell's text.
+        Pasted::Text(t) if !t.contains('\t') => Some(Pasted::Text(t.clone())),
+        Pasted::Text(_) => None,
+        Pasted::Fragment(f) => cell_fill(f).map(Pasted::Fragment),
+    };
+    let Some(fill) = fill.filter(|_| spans.len() > 1) else {
+        if !range.stream {
+            super::table::clear_range_cells(s, &range)?;
+        }
+        return Ok(false);
+    };
+    s.column = None;
+    // Bottom up, so the cells still to fill keep their positions; the caret ends after the last.
+    let mut end = None;
+    for (a, b) in spans.into_iter().rev() {
+        s.sel = Selection { anchor: a, focus: b };
+        match &fill {
+            Pasted::Fragment(f) => insert(s, f.clone())?,
+            Pasted::Text(t) => insert_text(s, t)?,
+        }
+        end.get_or_insert_with(|| s.sel.focus.clone());
+    }
+    if let Some(end) = end {
+        s.sel = Selection::caret(end);
+    }
+    Ok(true)
+}
+
 /// Replace the selection with `frag`, marking it as an insertion under Track Changes.
 pub fn insert(s: &mut Session, mut frag: Fragment) -> Result<(), CmdError> {
     super::controls::prepare_edit(s)?;

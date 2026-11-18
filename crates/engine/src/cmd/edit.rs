@@ -301,7 +301,11 @@ fn insert_spike(s: &mut Session, _: &Value) -> CmdResult {
 /// else another program's HTML or RTF (#687). The system clipboard's text has none, so it pastes
 /// as Keep Text Only does.
 fn paste(s: &mut Session, v: &Value) -> CmdResult {
-    match super::paste::paste_content(s, v)? {
+    let content = super::paste::paste_content(s, v)?;
+    if super::paste::fill_cells(s, &content)? {
+        return sel_result(s);
+    }
+    match content {
         super::paste::Pasted::Fragment(frag) => super::paste::insert(s, frag)?,
         super::paste::Pasted::Text(text) => super::paste::insert_text(s, &text)?,
     }
@@ -312,7 +316,12 @@ fn paste(s: &mut Session, v: &Value) -> CmdResult {
 fn paste_merge(s: &mut Session, v: &Value) -> CmdResult {
     let mut frag = super::paste::paste_fragment(s, v)?;
     super::paste::merge_formatting(s, &mut frag);
-    super::paste::insert(s, frag)?;
+    let content = super::paste::Pasted::Fragment(frag);
+    if !super::paste::fill_cells(s, &content)?
+        && let super::paste::Pasted::Fragment(frag) = content
+    {
+        super::paste::insert(s, frag)?;
+    }
     sel_result(s)
 }
 
@@ -458,6 +467,9 @@ fn paste_text(s: &mut Session, v: &Value) -> CmdResult {
     };
     if text.is_empty() {
         return Err(CmdError::Failed("the clipboard is empty".into()));
+    }
+    if super::paste::fill_cells(s, &super::paste::Pasted::Text(text.clone()))? {
+        return sel_result(s);
     }
     super::paste_text(s, &text.replace("\r\n", "\r").replace('\n', "\r"))?;
     sel_result(s)
